@@ -1,0 +1,60 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home page";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Welcome to Salus iT600 Gateway</h1>
+    <p class="lead">You are successfully connected to your gateway</p>
+</div>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Connection Status: Connected</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tbody>
+                        <tr>
+                            <th scope="row" class="text-end" style="width: 30%;">Gateway Host:</th>
+                            <td><code>@Model.Host</code></td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-end">EUID:</th>
+                            <td><code>@Model.Euid</code></td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-end">Authenticated At:</th>
+                            <td>@(Model.AuthenticatedAt != null ? DateTime.Parse(Model.AuthenticatedAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "N/A")</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-end">Session Status:</th>
+                            <td><span class="badge bg-success">Active</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                    <a asp-page="/Logout" class="btn btn-outline-danger">Logout</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5 class="card-title">About Salus iT600</h5>
+                <p class="card-text">
+                    The Salus iT600 smart home system allows you to control and monitor your heating, 
+                    cooling, and other smart home devices through the UGE600 universal gateway.
+                </p>
+                <p class="card-text">
+                    Your EUID (Electronic Unique ID) is securely stored in your browser session and 
+                    will be used to authenticate with the gateway for all operations.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
