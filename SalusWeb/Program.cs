@@ -1,7 +1,11 @@
+using SalusWeb.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<ISalusGatewayService, SalusGatewayService>();
 
 // Add session support
 builder.Services.AddDistributedMemoryCache();
