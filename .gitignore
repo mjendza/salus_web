@@ -1,2 +1,12 @@
 .idea
 ./venv
+
+# C# / .NET
+SalusWeb/bin/
+SalusWeb/obj/
+SalusWeb/*.user
+SalusWeb/.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates

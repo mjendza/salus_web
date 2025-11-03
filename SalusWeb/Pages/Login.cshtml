@@ -1,0 +1,60 @@
+@page
+@model SalusWeb.Pages.LoginModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Salus iT600 Gateway Login</h1>
+    <p class="lead">Enter your Gateway credentials to connect</p>
+</div>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="post">
+                    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @Model.ErrorMessage
+                        </div>
+                    }
+                    
+                    <div class="mb-3">
+                        <label asp-for="Host" class="form-label">Gateway Host</label>
+                        <input asp-for="Host" class="form-control" placeholder="192.168.1.100" required />
+                        <div class="form-text">IP address or hostname of your Salus Gateway</div>
+                        <span asp-validation-for="Host" class="text-danger"></span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label asp-for="Euid" class="form-label">EUID (Electronic Unique ID)</label>
+                        <input asp-for="Euid" class="form-control" placeholder="001E5E0D32906128" maxlength="16" required />
+                        <div class="form-text">16-character EUID found on the bottom of your gateway</div>
+                        <span asp-validation-for="Euid" class="text-danger"></span>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">Connect</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6 class="card-title">Troubleshooting</h6>
+                <ul class="small">
+                    <li>If you can't connect using the EUID on your gateway, try using <code>0000000000000000</code></li>
+                    <li>Make sure "Local WiFi Mode" is enabled in the Smart Home app settings</li>
+                    <li>Restart your Gateway by unplugging and plugging back the USB power</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
