@@ -32,7 +32,7 @@
                         </tr>
                         <tr>
                             <th scope="row" class="text-end">EUID:</th>
-                            <td><code>@Model.Euid?.Substring(0, 4)...@Model.Euid?.Substring(12)</code></td>
+                            <td><code>@(Model.Euid?.Length >= 16 ? Model.Euid.Substring(0, 4) + "..." + Model.Euid.Substring(12) : Model.Euid)</code></td>
                         </tr>
                         <tr>
                             <th scope="row" class="text-end">Status:</th>

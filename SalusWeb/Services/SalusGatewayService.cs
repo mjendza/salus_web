@@ -1,17 +1,13 @@
 using SalusWeb.Models;
-using System.Text.Json;
-using System.Net.Http.Headers;
 
 namespace SalusWeb.Services;
 
 public class SalusGatewayService : ISalusGatewayService
 {
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SalusGatewayService> _logger;
 
-    public SalusGatewayService(IHttpClientFactory httpClientFactory, ILogger<SalusGatewayService> logger)
+    public SalusGatewayService(ILogger<SalusGatewayService> logger)
     {
-        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -41,13 +37,12 @@ public class SalusGatewayService : ISalusGatewayService
         return allDevices;
     }
 
-    public async Task<List<ClimateDevice>> GetClimateDevicesAsync(string host, string euid)
+    public Task<List<ClimateDevice>> GetClimateDevicesAsync(string host, string euid)
     {
         // In a real implementation, this would call the Salus gateway API
         // For now, return mock data for demonstration
-        await Task.Delay(10); // Simulate async operation
         
-        return new List<ClimateDevice>
+        return Task.FromResult(new List<ClimateDevice>
         {
             new ClimateDevice
             {
@@ -81,14 +76,12 @@ public class SalusGatewayService : ISalusGatewayService
                 TemperatureUnit = "°C",
                 Available = true
             }
-        };
+        });
     }
 
-    public async Task<List<SensorDevice>> GetSensorDevicesAsync(string host, string euid)
+    public Task<List<SensorDevice>> GetSensorDevicesAsync(string host, string euid)
     {
-        await Task.Delay(10); // Simulate async operation
-        
-        return new List<SensorDevice>
+        return Task.FromResult(new List<SensorDevice>
         {
             new SensorDevice
             {
@@ -120,14 +113,12 @@ public class SalusGatewayService : ISalusGatewayService
                 DeviceClass = "temperature",
                 Available = true
             }
-        };
+        });
     }
 
-    public async Task<List<SwitchDevice>> GetSwitchDevicesAsync(string host, string euid)
+    public Task<List<SwitchDevice>> GetSwitchDevicesAsync(string host, string euid)
     {
-        await Task.Delay(10); // Simulate async operation
-        
-        return new List<SwitchDevice>
+        return Task.FromResult(new List<SwitchDevice>
         {
             new SwitchDevice
             {
@@ -145,14 +136,12 @@ public class SalusGatewayService : ISalusGatewayService
                 IsOn = false,
                 Available = true
             }
-        };
+        });
     }
 
-    public async Task<List<BinarySensorDevice>> GetBinarySensorDevicesAsync(string host, string euid)
+    public Task<List<BinarySensorDevice>> GetBinarySensorDevicesAsync(string host, string euid)
     {
-        await Task.Delay(10); // Simulate async operation
-        
-        return new List<BinarySensorDevice>
+        return Task.FromResult(new List<BinarySensorDevice>
         {
             new BinarySensorDevice
             {
@@ -172,14 +161,12 @@ public class SalusGatewayService : ISalusGatewayService
                 DeviceClass = "door",
                 Available = true
             }
-        };
+        });
     }
 
-    public async Task<List<CoverDevice>> GetCoverDevicesAsync(string host, string euid)
+    public Task<List<CoverDevice>> GetCoverDevicesAsync(string host, string euid)
     {
-        await Task.Delay(10); // Simulate async operation
-        
-        return new List<CoverDevice>
+        return Task.FromResult(new List<CoverDevice>
         {
             new CoverDevice
             {
@@ -190,7 +177,7 @@ public class SalusGatewayService : ISalusGatewayService
                 State = "open",
                 Available = true
             }
-        };
+        });
     }
 
     private List<DeviceBase> GetMockDevices()
