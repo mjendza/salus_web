@@ -239,7 +239,7 @@ public class SalusGatewayService : ISalusGatewayService
                             if (!tempS.TryGetProperty("MeasuredValue_x100", out var tempValue)) continue;
 
                             var temperature = tempValue.GetInt32() / 100.0;
-                            uniqueId = uniqueId + "_temp"; // Some sensors also measure temperature
+                            uniqueId = $"{uniqueId}_temp"; // Some sensors also measure temperature
 
                             var deviceName = "Unknown";
                             if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
@@ -370,7 +370,7 @@ public class SalusGatewayService : ISalusGatewayService
                             {
                                 endpoint = endpointProp.GetInt32();
                             }
-                            uniqueId = uniqueId + "_" + endpoint; // Double switches have different endpoints
+                            uniqueId = $"{uniqueId}_{endpoint}"; // Double switches have different endpoints
 
                             var deviceName = uniqueId;
                             if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
@@ -785,17 +785,21 @@ public class SalusGatewayService : ISalusGatewayService
         {
             throw; // Re-throw our custom exceptions
         }
+        catch (System.Security.Cryptography.CryptographicException ex)
+        {
+            // Decryption failed, likely due to wrong EUID
+            _logger.LogError(ex, "Cryptographic error - likely authentication failure");
+            throw new SalusAuthenticationException("Authentication failed. Please check if the EUID is correct.", ex);
+        }
+        catch (JsonException ex)
+        {
+            // JSON parsing failed, could be decryption issue or malformed response
+            _logger.LogError(ex, "JSON parsing error - possible authentication issue");
+            throw new SalusAuthenticationException("Failed to parse gateway response. Please check if the EUID is correct.", ex);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error while communicating with gateway");
-            
-            // Try to determine if it's an authentication error
-            if (ex.Message.Contains("decrypt", StringComparison.OrdinalIgnoreCase) || 
-                ex.Message.Contains("padding", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new SalusAuthenticationException("Authentication failed. Please check if the EUID is correct.", ex);
-            }
-            
             throw new SalusCommandException("Unexpected error occurred while communicating with gateway", ex);
         }
     }

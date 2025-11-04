@@ -31,7 +31,7 @@ public class SalusEncryptor
     }
 
     /// <summary>
-    /// Encrypts plain text using AES-128-CBC with PKCS7 padding
+    /// Encrypts plain text using AES-256-CBC with PKCS7 padding
     /// </summary>
     public byte[] Encrypt(string plainText)
     {
@@ -47,7 +47,7 @@ public class SalusEncryptor
     }
 
     /// <summary>
-    /// Decrypts cipher bytes using AES-128-CBC with PKCS7 padding
+    /// Decrypts cipher bytes using AES-256-CBC with PKCS7 padding
     /// </summary>
     public string Decrypt(byte[] cipherBytes)
     {
