@@ -2,9 +2,39 @@
   <a href="https://github.com/epoplavskis/homeassistant_salus"><img src="https://shop.salusinc.com/cdn/shop/files/saluslogo_-_600x160_eea8b0d2-55bf-43fa-a46a-2455b56d73c5_384x128.png?v=1623083270" height="140"></a>
 </p>
 
-# HomeAssistant - Salus Controls iT600 Smart Home Custom Component
+# Salus Controls iT600 Smart Home Integration
 
-# What This Is
+This repository contains two implementations for monitoring and controlling Salus iT600 smart home devices locally:
+
+1. **Home Assistant Custom Component** (Python) - Located in `custom_components/`
+2. **Standalone Web Application** (C#) - Located in `SalusWeb/`
+
+Both implementations communicate directly with your Salus Controls UGE600 universal gateway using the local API.
+
+## 🆕 C# Web Application (NEW)
+
+A standalone ASP.NET Core web application that provides a dashboard for your Salus devices without requiring Home Assistant.
+
+### Features
+- ✅ Real-time device monitoring
+- ✅ Support for all device types (climate, sensors, switches, binary sensors, covers)
+- ✅ Connection testing before login
+- ✅ Encrypted communication with gateway (AES-256-CBC)
+- ✅ User-friendly error messages
+- ✅ No mock data - all real API integration
+
+### Quick Start
+
+```bash
+cd SalusWeb
+dotnet run
+```
+
+Then navigate to `http://localhost:5000` and enter your gateway details.
+
+**See [CSHARP_IMPLEMENTATION.md](CSHARP_IMPLEMENTATION.md) for detailed documentation.**
+
+## Home Assistant Custom Component (Python)
 
 This is a custom component to allows you to control and monitor your Salus iT600 smart home devices locally through Salus Controls UGE600 / UGE600 universal gateway.
 

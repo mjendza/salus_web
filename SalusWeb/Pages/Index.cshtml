@@ -11,8 +11,11 @@
 
 @if (!string.IsNullOrEmpty(Model.ErrorMessage))
 {
-    <div class="alert alert-warning alert-dismissible fade show" role="alert">
-        <i class="bi bi-exclamation-triangle-fill"></i> @Model.ErrorMessage
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <h5 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Connection Error</h5>
+        <p style="white-space: pre-line;">@Model.ErrorMessage</p>
+        <hr>
+        <p class="mb-0 small">Please check your settings and try again, or visit the <a href="/Login" class="alert-link">Login page</a> to reconnect.</p>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 }

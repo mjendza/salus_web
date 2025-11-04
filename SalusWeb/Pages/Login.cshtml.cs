@@ -1,16 +1,20 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.ComponentModel.DataAnnotations;
+using SalusWeb.Services;
+using SalusWeb.Exceptions;
 
 namespace SalusWeb.Pages
 {
     public class LoginModel : PageModel
     {
         private readonly ILogger<LoginModel> _logger;
+        private readonly ISalusGatewayService _gatewayService;
 
-        public LoginModel(ILogger<LoginModel> logger)
+        public LoginModel(ILogger<LoginModel> logger, ISalusGatewayService gatewayService)
         {
             _logger = logger;
+            _gatewayService = gatewayService;
         }
 
         [BindProperty]
@@ -35,7 +39,7 @@ namespace SalusWeb.Pages
             }
         }
 
-        public IActionResult OnPost()
+        public async Task<IActionResult> OnPostAsync()
         {
             if (!ModelState.IsValid)
             {
@@ -51,7 +55,12 @@ namespace SalusWeb.Pages
                     return Page();
                 }
 
-                // Store authentication information in session
+                // Test connection to the gateway before storing credentials
+                _logger.LogInformation("Testing connection to gateway at {Host}", Host);
+                
+                await _gatewayService.TestConnectionAsync(Host, Euid);
+
+                // Connection successful - store authentication information in session
                 HttpContext.Session.SetString("EUID", Euid);
                 HttpContext.Session.SetString("Host", Host);
                 HttpContext.Session.SetString("AuthenticatedAt", DateTime.UtcNow.ToString("o"));
@@ -62,10 +71,22 @@ namespace SalusWeb.Pages
                 // Redirect to home page
                 return RedirectToPage("/Index");
             }
+            catch (SalusAuthenticationException ex)
+            {
+                _logger.LogWarning(ex, "Authentication failed");
+                ErrorMessage = "Authentication failed. Please verify your EUID is correct (16 hexadecimal characters found on the bottom of your gateway).";
+                return Page();
+            }
+            catch (SalusConnectionException ex)
+            {
+                _logger.LogWarning(ex, "Connection failed");
+                ErrorMessage = $"Cannot connect to gateway at {Host}. Please check:\n• Gateway is powered on\n• Host/IP address is correct\n• Gateway is on the same network\n• 'Local WiFi Mode' is enabled in gateway settings";
+                return Page();
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during authentication");
-                ErrorMessage = "An error occurred during authentication. Please try again.";
+                ErrorMessage = $"An unexpected error occurred: {ex.Message}";
                 return Page();
             }
         }
