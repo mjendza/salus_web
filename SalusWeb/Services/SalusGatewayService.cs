@@ -15,6 +15,30 @@ public class SalusGatewayService : ISalusGatewayService
         _httpClientFactory = httpClientFactory;
     }
 
+    /// <summary>
+    /// Tests connectivity to the gateway and validates authentication
+    /// </summary>
+    public async Task<bool> TestConnectionAsync(string host, string euid)
+    {
+        try
+        {
+            // Try to connect and get basic info from the gateway
+            var response = await MakeEncryptedRequestAsync(host, euid, "read", new
+            {
+                requestAttr = "readall"
+            });
+
+            // If we get here, connection and authentication were successful
+            _logger.LogInformation("Successfully connected to gateway at {Host}", host);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to connect to gateway at {Host}", host);
+            throw; // Re-throw to let caller handle the specific exception type
+        }
+    }
+
     public async Task<List<DeviceBase>> GetAllDevicesAsync(string host, string euid)
     {
         var allDevices = new List<DeviceBase>();
