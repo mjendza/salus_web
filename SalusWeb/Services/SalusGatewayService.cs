@@ -1,211 +1,778 @@
+using System.Text.Json;
 using SalusWeb.Models;
+using SalusWeb.Exceptions;
 
 namespace SalusWeb.Services;
 
 public class SalusGatewayService : ISalusGatewayService
 {
     private readonly ILogger<SalusGatewayService> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public SalusGatewayService(ILogger<SalusGatewayService> logger)
+    public SalusGatewayService(ILogger<SalusGatewayService> logger, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task<List<DeviceBase>> GetAllDevicesAsync(string host, string euid)
     {
         var allDevices = new List<DeviceBase>();
         
-        try
-        {
-            // Try to get devices from the gateway
-            // For now, we'll return mock data as a demonstration
-            // In a real implementation, this would call the Salus gateway API
-            
-            allDevices.AddRange(await GetClimateDevicesAsync(host, euid));
-            allDevices.AddRange(await GetSensorDevicesAsync(host, euid));
-            allDevices.AddRange(await GetSwitchDevicesAsync(host, euid));
-            allDevices.AddRange(await GetBinarySensorDevicesAsync(host, euid));
-            allDevices.AddRange(await GetCoverDevicesAsync(host, euid));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching devices from gateway {Host}", host);
-            // Return mock data even if connection fails (for demonstration)
-            allDevices = GetMockDevices();
-        }
+        // Get all devices from the gateway using real API calls
+        allDevices.AddRange(await GetClimateDevicesAsync(host, euid));
+        allDevices.AddRange(await GetSensorDevicesAsync(host, euid));
+        allDevices.AddRange(await GetSwitchDevicesAsync(host, euid));
+        allDevices.AddRange(await GetBinarySensorDevicesAsync(host, euid));
+        allDevices.AddRange(await GetCoverDevicesAsync(host, euid));
 
         return allDevices;
     }
 
-    public Task<List<ClimateDevice>> GetClimateDevicesAsync(string host, string euid)
+    public async Task<List<ClimateDevice>> GetClimateDevicesAsync(string host, string euid)
     {
-        // In a real implementation, this would call the Salus gateway API
-        // For now, return mock data for demonstration
+        var devices = new List<ClimateDevice>();
         
-        return Task.FromResult(new List<ClimateDevice>
+        try
         {
-            new ClimateDevice
+            var allDevices = await MakeEncryptedRequestAsync(host, euid, "read", new
             {
-                UniqueId = "thermostat_living_room",
-                Name = "Living Room Thermostat",
-                Model = "HTRP-RF",
-                CurrentTemperature = 21.5,
-                TargetTemperature = 22.0,
-                HvacMode = "heat",
-                PresetMode = "comfort",
-                FanMode = "auto",
-                Humidity = 45,
-                MinTemperature = 5.0,
-                MaxTemperature = 35.0,
-                TemperatureUnit = "°C",
-                Available = true
-            },
-            new ClimateDevice
-            {
-                UniqueId = "thermostat_bedroom",
-                Name = "Bedroom Thermostat",
-                Model = "HTRP-RF",
-                CurrentTemperature = 19.8,
-                TargetTemperature = 20.0,
-                HvacMode = "heat",
-                PresetMode = "sleep",
-                FanMode = "low",
-                Humidity = 48,
-                MinTemperature = 5.0,
-                MaxTemperature = 35.0,
-                TemperatureUnit = "°C",
-                Available = true
-            }
-        });
-    }
+                requestAttr = "readall"
+            });
 
-    public Task<List<SensorDevice>> GetSensorDevicesAsync(string host, string euid)
-    {
-        return Task.FromResult(new List<SensorDevice>
-        {
-            new SensorDevice
+            // Filter climate devices (thermostats)
+            var climateDevices = new List<JsonElement>();
+            if (allDevices.TryGetProperty("id", out var idArray))
             {
-                UniqueId = "temp_sensor_kitchen",
-                Name = "Kitchen Temperature",
-                Model = "VS10RF",
-                State = "22.3",
-                Unit = "°C",
-                DeviceClass = "temperature",
-                Available = true
-            },
-            new SensorDevice
-            {
-                UniqueId = "humidity_sensor_bathroom",
-                Name = "Bathroom Humidity",
-                Model = "VS10RF",
-                State = "65",
-                Unit = "%",
-                DeviceClass = "humidity",
-                Available = true
-            },
-            new SensorDevice
-            {
-                UniqueId = "temp_sensor_outside",
-                Name = "Outside Temperature",
-                Model = "VS10RF",
-                State = "12.5",
-                Unit = "°C",
-                DeviceClass = "temperature",
-                Available = true
+                foreach (var device in idArray.EnumerateArray())
+                {
+                    if (device.TryGetProperty("sIT600TH", out _) || device.TryGetProperty("sTherS", out _))
+                    {
+                        climateDevices.Add(device);
+                    }
+                }
             }
-        });
-    }
 
-    public Task<List<SwitchDevice>> GetSwitchDevicesAsync(string host, string euid)
-    {
-        return Task.FromResult(new List<SwitchDevice>
-        {
-            new SwitchDevice
+            if (climateDevices.Any())
             {
-                UniqueId = "switch_boiler",
-                Name = "Boiler Switch",
-                Model = "SR600",
-                IsOn = true,
-                Available = true
-            },
-            new SwitchDevice
-            {
-                UniqueId = "switch_pump",
-                Name = "Circulation Pump",
-                Model = "SR600",
-                IsOn = false,
-                Available = true
+                // Get detailed status for climate devices
+                var deviceDataList = climateDevices
+                    .Where(d => d.TryGetProperty("data", out _))
+                    .Select(d => new { data = d.GetProperty("data") })
+                    .ToArray();
+
+                var status = await MakeEncryptedRequestAsync(host, euid, "read", new
+                {
+                    requestAttr = "deviceid",
+                    id = deviceDataList
+                });
+
+                if (status.TryGetProperty("id", out var statusArray))
+                {
+                    foreach (var deviceStatus in statusArray.EnumerateArray())
+                    {
+                        try
+                        {
+                            if (!deviceStatus.TryGetProperty("data", out var data)) continue;
+                            if (!data.TryGetProperty("UniID", out var uniqueIdProp)) continue;
+                            
+                            var uniqueId = uniqueIdProp.GetString();
+                            if (string.IsNullOrEmpty(uniqueId)) continue;
+
+                            var deviceName = "Unknown";
+                            if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
+                                sZDO.TryGetProperty("DeviceName", out var deviceNameProp))
+                            {
+                                var deviceNameJson = deviceNameProp.GetString();
+                                if (!string.IsNullOrEmpty(deviceNameJson))
+                                {
+                                    try
+                                    {
+                                        var nameObj = JsonSerializer.Deserialize<Dictionary<string, string>>(deviceNameJson);
+                                        deviceName = nameObj?.GetValueOrDefault("deviceName", "Unknown") ?? "Unknown";
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            double? currentTemp = null;
+                            double? targetTemp = null;
+                            
+                            if (deviceStatus.TryGetProperty("sIT600TH", out var sIT600TH))
+                            {
+                                if (sIT600TH.TryGetProperty("LocalTemperature_x100", out var ct))
+                                    currentTemp = ct.GetInt32() / 100.0;
+                                    
+                                if (sIT600TH.TryGetProperty("HeatingSetpoint_x100", out var tt))
+                                    targetTemp = tt.GetInt32() / 100.0;
+                            }
+
+                            var online = true;
+                            if (deviceStatus.TryGetProperty("sZDOInfo", out var sZDOInfo) &&
+                                sZDOInfo.TryGetProperty("OnlineStatus_i", out var onlineStatus))
+                            {
+                                online = onlineStatus.GetInt32() == 1;
+                            }
+
+                            var model = "Unknown";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS) &&
+                                basicS.TryGetProperty("ModelIdentifier", out var modelId))
+                            {
+                                model = modelId.GetString() ?? "Unknown";
+                            }
+
+                            var manufacturer = "SALUS";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS2) &&
+                                basicS2.TryGetProperty("ManufactureName", out var mfr))
+                            {
+                                manufacturer = mfr.GetString() ?? "SALUS";
+                            }
+
+                            var device = new ClimateDevice
+                            {
+                                UniqueId = uniqueId,
+                                Name = deviceName,
+                                Model = model,
+                                CurrentTemperature = currentTemp,
+                                TargetTemperature = targetTemp,
+                                MinTemperature = 5.0,
+                                MaxTemperature = 35.0,
+                                TemperatureUnit = "°C",
+                                Available = online,
+                                Manufacturer = manufacturer
+                            };
+
+                            devices.Add(device);
+                            _logger.LogInformation("Found climate device: {Name} ({UniqueId})", device.Name, device.UniqueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse climate device");
+                        }
+                    }
+                }
             }
-        });
-    }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching climate devices from gateway");
+            throw;
+        }
 
-    public Task<List<BinarySensorDevice>> GetBinarySensorDevicesAsync(string host, string euid)
-    {
-        return Task.FromResult(new List<BinarySensorDevice>
-        {
-            new BinarySensorDevice
-            {
-                UniqueId = "motion_hallway",
-                Name = "Hallway Motion",
-                Model = "PS600",
-                IsOn = false,
-                DeviceClass = "motion",
-                Available = true
-            },
-            new BinarySensorDevice
-            {
-                UniqueId = "door_front",
-                Name = "Front Door",
-                Model = "OS600",
-                IsOn = false,
-                DeviceClass = "door",
-                Available = true
-            }
-        });
-    }
-
-    public Task<List<CoverDevice>> GetCoverDevicesAsync(string host, string euid)
-    {
-        return Task.FromResult(new List<CoverDevice>
-        {
-            new CoverDevice
-            {
-                UniqueId = "blind_living_room",
-                Name = "Living Room Blind",
-                Model = "RS600",
-                Position = 50,
-                State = "open",
-                Available = true
-            }
-        });
-    }
-
-    private List<DeviceBase> GetMockDevices()
-    {
-        var devices = new List<DeviceBase>();
-        
-        devices.Add(new ClimateDevice
-        {
-            UniqueId = "thermostat_demo",
-            Name = "Demo Thermostat",
-            Model = "HTRP-RF",
-            CurrentTemperature = 20.0,
-            TargetTemperature = 21.0,
-            HvacMode = "heat",
-            Available = true
-        });
-        
-        devices.Add(new SensorDevice
-        {
-            UniqueId = "sensor_demo",
-            Name = "Demo Temperature Sensor",
-            Model = "VS10RF",
-            State = "20.5",
-            Unit = "°C",
-            DeviceClass = "temperature",
-            Available = true
-        });
-        
         return devices;
+    }
+
+    public async Task<List<SensorDevice>> GetSensorDevicesAsync(string host, string euid)
+    {
+        var devices = new List<SensorDevice>();
+        
+        try
+        {
+            var allDevices = await MakeEncryptedRequestAsync(host, euid, "read", new
+            {
+                requestAttr = "readall"
+            });
+
+            // Filter sensor devices
+            var sensorDevices = new List<JsonElement>();
+            if (allDevices.TryGetProperty("id", out var idArray))
+            {
+                foreach (var device in idArray.EnumerateArray())
+                {
+                    if (device.TryGetProperty("sTempS", out _))
+                    {
+                        sensorDevices.Add(device);
+                    }
+                }
+            }
+
+            if (sensorDevices.Any())
+            {
+                var deviceDataList = sensorDevices
+                    .Where(d => d.TryGetProperty("data", out _))
+                    .Select(d => new { data = d.GetProperty("data") })
+                    .ToArray();
+
+                var status = await MakeEncryptedRequestAsync(host, euid, "read", new
+                {
+                    requestAttr = "deviceid",
+                    id = deviceDataList
+                });
+
+                if (status.TryGetProperty("id", out var statusArray))
+                {
+                    foreach (var deviceStatus in statusArray.EnumerateArray())
+                    {
+                        try
+                        {
+                            if (!deviceStatus.TryGetProperty("data", out var data)) continue;
+                            if (!data.TryGetProperty("UniID", out var uniqueIdProp)) continue;
+                            
+                            var uniqueId = uniqueIdProp.GetString();
+                            if (string.IsNullOrEmpty(uniqueId)) continue;
+
+                            if (!deviceStatus.TryGetProperty("sTempS", out var tempS)) continue;
+                            if (!tempS.TryGetProperty("MeasuredValue_x100", out var tempValue)) continue;
+
+                            var temperature = tempValue.GetInt32() / 100.0;
+                            uniqueId = uniqueId + "_temp"; // Some sensors also measure temperature
+
+                            var deviceName = "Unknown";
+                            if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
+                                sZDO.TryGetProperty("DeviceName", out var deviceNameProp))
+                            {
+                                var deviceNameJson = deviceNameProp.GetString();
+                                if (!string.IsNullOrEmpty(deviceNameJson))
+                                {
+                                    try
+                                    {
+                                        var nameObj = JsonSerializer.Deserialize<Dictionary<string, string>>(deviceNameJson);
+                                        deviceName = nameObj?.GetValueOrDefault("deviceName", "Unknown") ?? "Unknown";
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            var online = true;
+                            if (deviceStatus.TryGetProperty("sZDOInfo", out var sZDOInfo) &&
+                                sZDOInfo.TryGetProperty("OnlineStatus_i", out var onlineStatus))
+                            {
+                                online = onlineStatus.GetInt32() == 1;
+                            }
+
+                            var model = "Unknown";
+                            if (deviceStatus.TryGetProperty("DeviceL", out var deviceL) &&
+                                deviceL.TryGetProperty("ModelIdentifier_i", out var modelId))
+                            {
+                                model = modelId.GetString() ?? "Unknown";
+                            }
+
+                            var manufacturer = "SALUS";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS) &&
+                                basicS.TryGetProperty("ManufactureName", out var mfr))
+                            {
+                                manufacturer = mfr.GetString() ?? "SALUS";
+                            }
+
+                            var device = new SensorDevice
+                            {
+                                UniqueId = uniqueId,
+                                Name = deviceName,
+                                Model = model,
+                                State = temperature.ToString("F1"),
+                                Unit = "°C",
+                                DeviceClass = "temperature",
+                                Available = online,
+                                Manufacturer = manufacturer
+                            };
+
+                            devices.Add(device);
+                            _logger.LogInformation("Found sensor device: {Name} ({UniqueId})", device.Name, device.UniqueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse sensor device");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching sensor devices from gateway");
+            throw;
+        }
+
+        return devices;
+    }
+
+    public async Task<List<SwitchDevice>> GetSwitchDevicesAsync(string host, string euid)
+    {
+        var devices = new List<SwitchDevice>();
+        
+        try
+        {
+            var allDevices = await MakeEncryptedRequestAsync(host, euid, "read", new
+            {
+                requestAttr = "readall"
+            });
+
+            // Filter switch devices
+            var switchDevices = new List<JsonElement>();
+            if (allDevices.TryGetProperty("id", out var idArray))
+            {
+                foreach (var device in idArray.EnumerateArray())
+                {
+                    if (device.TryGetProperty("sOnOffS", out _))
+                    {
+                        switchDevices.Add(device);
+                    }
+                }
+            }
+
+            if (switchDevices.Any())
+            {
+                var deviceDataList = switchDevices
+                    .Where(d => d.TryGetProperty("data", out _))
+                    .Select(d => new { data = d.GetProperty("data") })
+                    .ToArray();
+
+                var status = await MakeEncryptedRequestAsync(host, euid, "read", new
+                {
+                    requestAttr = "deviceid",
+                    id = deviceDataList
+                });
+
+                if (status.TryGetProperty("id", out var statusArray))
+                {
+                    foreach (var deviceStatus in statusArray.EnumerateArray())
+                    {
+                        try
+                        {
+                            if (!deviceStatus.TryGetProperty("data", out var data)) continue;
+                            if (!data.TryGetProperty("UniID", out var uniqueIdProp)) continue;
+                            
+                            var uniqueId = uniqueIdProp.GetString();
+                            if (string.IsNullOrEmpty(uniqueId)) continue;
+
+                            // Skip roller shutter endpoints in combined devices
+                            if (deviceStatus.TryGetProperty("sLevelS", out _)) continue;
+
+                            if (!deviceStatus.TryGetProperty("sOnOffS", out var onOffS)) continue;
+                            if (!onOffS.TryGetProperty("OnOff", out var onOffValue)) continue;
+
+                            var endpoint = 1;
+                            if (data.TryGetProperty("Endpoint", out var endpointProp))
+                            {
+                                endpoint = endpointProp.GetInt32();
+                            }
+                            uniqueId = uniqueId + "_" + endpoint; // Double switches have different endpoints
+
+                            var deviceName = uniqueId;
+                            if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
+                                sZDO.TryGetProperty("DeviceName", out var deviceNameProp))
+                            {
+                                var deviceNameJson = deviceNameProp.GetString();
+                                if (!string.IsNullOrEmpty(deviceNameJson))
+                                {
+                                    try
+                                    {
+                                        var nameObj = JsonSerializer.Deserialize<Dictionary<string, string>>(deviceNameJson);
+                                        deviceName = nameObj?.GetValueOrDefault("deviceName", uniqueId) ?? uniqueId;
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            var online = true;
+                            if (deviceStatus.TryGetProperty("sZDOInfo", out var sZDOInfo) &&
+                                sZDOInfo.TryGetProperty("OnlineStatus_i", out var onlineStatus))
+                            {
+                                online = onlineStatus.GetInt32() == 1;
+                            }
+
+                            var model = "Unknown";
+                            if (deviceStatus.TryGetProperty("DeviceL", out var deviceL) &&
+                                deviceL.TryGetProperty("ModelIdentifier_i", out var modelId))
+                            {
+                                model = modelId.GetString() ?? "Unknown";
+                            }
+
+                            var manufacturer = "SALUS";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS) &&
+                                basicS.TryGetProperty("ManufactureName", out var mfr))
+                            {
+                                manufacturer = mfr.GetString() ?? "SALUS";
+                            }
+
+                            var device = new SwitchDevice
+                            {
+                                UniqueId = uniqueId,
+                                Name = deviceName,
+                                Model = model,
+                                IsOn = onOffValue.GetInt32() == 1,
+                                Available = online,
+                                Manufacturer = manufacturer
+                            };
+
+                            devices.Add(device);
+                            _logger.LogInformation("Found switch device: {Name} ({UniqueId})", device.Name, device.UniqueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse switch device");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching switch devices from gateway");
+            throw;
+        }
+
+        return devices;
+    }
+
+    public async Task<List<BinarySensorDevice>> GetBinarySensorDevicesAsync(string host, string euid)
+    {
+        var devices = new List<BinarySensorDevice>();
+        
+        try
+        {
+            var allDevices = await MakeEncryptedRequestAsync(host, euid, "read", new
+            {
+                requestAttr = "readall"
+            });
+
+            // Filter binary sensor devices
+            var binarySensorDevices = new List<JsonElement>();
+            if (allDevices.TryGetProperty("id", out var idArray))
+            {
+                foreach (var device in idArray.EnumerateArray())
+                {
+                    var hasIASZS = device.TryGetProperty("sIASZS", out _);
+                    var isMiniTRV = false;
+                    
+                    if (device.TryGetProperty("sBasicS", out var basicS) &&
+                        basicS.TryGetProperty("ModelIdentifier", out var modelId))
+                    {
+                        var model = modelId.GetString();
+                        isMiniTRV = model == "it600MINITRV" || model == "it600Receiver";
+                    }
+                    
+                    if (hasIASZS || isMiniTRV)
+                    {
+                        binarySensorDevices.Add(device);
+                    }
+                }
+            }
+
+            if (binarySensorDevices.Any())
+            {
+                var deviceDataList = binarySensorDevices
+                    .Where(d => d.TryGetProperty("data", out _))
+                    .Select(d => new { data = d.GetProperty("data") })
+                    .ToArray();
+
+                var status = await MakeEncryptedRequestAsync(host, euid, "read", new
+                {
+                    requestAttr = "deviceid",
+                    id = deviceDataList
+                });
+
+                if (status.TryGetProperty("id", out var statusArray))
+                {
+                    foreach (var deviceStatus in statusArray.EnumerateArray())
+                    {
+                        try
+                        {
+                            if (!deviceStatus.TryGetProperty("data", out var data)) continue;
+                            if (!data.TryGetProperty("UniID", out var uniqueIdProp)) continue;
+                            
+                            var uniqueId = uniqueIdProp.GetString();
+                            if (string.IsNullOrEmpty(uniqueId)) continue;
+
+                            var deviceName = "Unknown";
+                            if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
+                                sZDO.TryGetProperty("DeviceName", out var deviceNameProp))
+                            {
+                                var deviceNameJson = deviceNameProp.GetString();
+                                if (!string.IsNullOrEmpty(deviceNameJson))
+                                {
+                                    try
+                                    {
+                                        var nameObj = JsonSerializer.Deserialize<Dictionary<string, string>>(deviceNameJson);
+                                        deviceName = nameObj?.GetValueOrDefault("deviceName", "Unknown") ?? "Unknown";
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            var online = true;
+                            if (deviceStatus.TryGetProperty("sZDOInfo", out var sZDOInfo) &&
+                                sZDOInfo.TryGetProperty("OnlineStatus_i", out var onlineStatus))
+                            {
+                                online = onlineStatus.GetInt32() == 1;
+                            }
+
+                            var model = "Unknown";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS) &&
+                                basicS.TryGetProperty("ModelIdentifier", out var modelId))
+                            {
+                                model = modelId.GetString() ?? "Unknown";
+                            }
+
+                            // Determine device class and state based on model
+                            var isOn = false;
+                            var deviceClass = "none";
+                            
+                            if (deviceStatus.TryGetProperty("sIASZS", out var iaszs))
+                            {
+                                if (iaszs.TryGetProperty("ZoneStatus", out var zoneStatus))
+                                {
+                                    var status_value = zoneStatus.GetInt32();
+                                    isOn = (status_value & 1) != 0; // Check first bit for alarm status
+                                    
+                                    // Try to determine device type from model
+                                    if (!string.IsNullOrEmpty(model))
+                                    {
+                                        if (model.Contains("Motion", StringComparison.OrdinalIgnoreCase) || 
+                                            model.Contains("PS", StringComparison.OrdinalIgnoreCase))
+                                            deviceClass = "motion";
+                                        else if (model.Contains("Door", StringComparison.OrdinalIgnoreCase) || 
+                                                 model.Contains("Window", StringComparison.OrdinalIgnoreCase) ||
+                                                 model.Contains("OS", StringComparison.OrdinalIgnoreCase))
+                                            deviceClass = "opening";
+                                    }
+                                }
+                            }
+
+                            var manufacturer = "SALUS";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS2) &&
+                                basicS2.TryGetProperty("ManufactureName", out var mfr))
+                            {
+                                manufacturer = mfr.GetString() ?? "SALUS";
+                            }
+
+                            var device = new BinarySensorDevice
+                            {
+                                UniqueId = uniqueId,
+                                Name = deviceName,
+                                Model = model,
+                                IsOn = isOn,
+                                DeviceClass = deviceClass,
+                                Available = online,
+                                Manufacturer = manufacturer
+                            };
+
+                            devices.Add(device);
+                            _logger.LogInformation("Found binary sensor device: {Name} ({UniqueId})", device.Name, device.UniqueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse binary sensor device");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching binary sensor devices from gateway");
+            throw;
+        }
+
+        return devices;
+    }
+
+    public async Task<List<CoverDevice>> GetCoverDevicesAsync(string host, string euid)
+    {
+        var devices = new List<CoverDevice>();
+        
+        try
+        {
+            var allDevices = await MakeEncryptedRequestAsync(host, euid, "read", new
+            {
+                requestAttr = "readall"
+            });
+
+            // Filter cover devices (blinds/shutters)
+            var coverDevices = new List<JsonElement>();
+            if (allDevices.TryGetProperty("id", out var idArray))
+            {
+                foreach (var device in idArray.EnumerateArray())
+                {
+                    if (device.TryGetProperty("sLevelS", out _))
+                    {
+                        coverDevices.Add(device);
+                    }
+                }
+            }
+
+            if (coverDevices.Any())
+            {
+                var deviceDataList = coverDevices
+                    .Where(d => d.TryGetProperty("data", out _))
+                    .Select(d => new { data = d.GetProperty("data") })
+                    .ToArray();
+
+                var status = await MakeEncryptedRequestAsync(host, euid, "read", new
+                {
+                    requestAttr = "deviceid",
+                    id = deviceDataList
+                });
+
+                if (status.TryGetProperty("id", out var statusArray))
+                {
+                    foreach (var deviceStatus in statusArray.EnumerateArray())
+                    {
+                        try
+                        {
+                            if (!deviceStatus.TryGetProperty("data", out var data)) continue;
+                            if (!data.TryGetProperty("UniID", out var uniqueIdProp)) continue;
+                            
+                            var uniqueId = uniqueIdProp.GetString();
+                            if (string.IsNullOrEmpty(uniqueId)) continue;
+
+                            // Skip endpoints which are disabled
+                            if (deviceStatus.TryGetProperty("sButtonS", out var buttonS) && 
+                                buttonS.TryGetProperty("Mode", out var mode) && 
+                                mode.GetInt32() == 0)
+                                continue;
+
+                            if (!deviceStatus.TryGetProperty("sLevelS", out var levelS)) continue;
+                            
+                            var currentPosition = 0;
+                            if (levelS.TryGetProperty("CurrentLevel", out var cp))
+                            {
+                                currentPosition = cp.GetInt32();
+                            }
+
+                            var deviceName = "Unknown";
+                            if (deviceStatus.TryGetProperty("sZDO", out var sZDO) &&
+                                sZDO.TryGetProperty("DeviceName", out var deviceNameProp))
+                            {
+                                var deviceNameJson = deviceNameProp.GetString();
+                                if (!string.IsNullOrEmpty(deviceNameJson))
+                                {
+                                    try
+                                    {
+                                        var nameObj = JsonSerializer.Deserialize<Dictionary<string, string>>(deviceNameJson);
+                                        deviceName = nameObj?.GetValueOrDefault("deviceName", "Unknown") ?? "Unknown";
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            var online = true;
+                            if (deviceStatus.TryGetProperty("sZDOInfo", out var sZDOInfo) &&
+                                sZDOInfo.TryGetProperty("OnlineStatus_i", out var onlineStatus))
+                            {
+                                online = onlineStatus.GetInt32() == 1;
+                            }
+
+                            var model = "Unknown";
+                            if (deviceStatus.TryGetProperty("DeviceL", out var deviceL) &&
+                                deviceL.TryGetProperty("ModelIdentifier_i", out var modelId))
+                            {
+                                model = modelId.GetString() ?? "Unknown";
+                            }
+
+                            var state = currentPosition == 0 ? "closed" : currentPosition == 100 ? "open" : "partially_open";
+
+                            var manufacturer = "SALUS";
+                            if (deviceStatus.TryGetProperty("sBasicS", out var basicS) &&
+                                basicS.TryGetProperty("ManufactureName", out var mfr))
+                            {
+                                manufacturer = mfr.GetString() ?? "SALUS";
+                            }
+
+                            var device = new CoverDevice
+                            {
+                                UniqueId = uniqueId,
+                                Name = deviceName,
+                                Model = model,
+                                Position = currentPosition,
+                                State = state,
+                                Available = online,
+                                Manufacturer = manufacturer
+                            };
+
+                            devices.Add(device);
+                            _logger.LogInformation("Found cover device: {Name} ({UniqueId})", device.Name, device.UniqueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse cover device");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching cover devices from gateway");
+            throw;
+        }
+
+        return devices;
+    }
+
+    /// <summary>
+    /// Makes an encrypted request to the Salus iT600 Gateway
+    /// </summary>
+    private async Task<JsonElement> MakeEncryptedRequestAsync(string host, string euid, string command, object requestBody)
+    {
+        var encryptor = new SalusEncryptor(euid);
+        var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(10);
+
+        try
+        {
+            var requestUrl = $"http://{host}/deviceid/{command}";
+            var requestJson = JsonSerializer.Serialize(requestBody);
+
+            _logger.LogDebug("Gateway request: POST {Url}", requestUrl);
+
+            // Encrypt the request
+            var encryptedData = encryptor.Encrypt(requestJson);
+
+            var content = new ByteArrayContent(encryptedData);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+
+            var response = await client.PostAsync(requestUrl, content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new SalusConnectionException($"Gateway returned status code: {response.StatusCode}");
+            }
+
+            // Decrypt the response
+            var responseBytes = await response.Content.ReadAsByteArrayAsync();
+            var responseJson = encryptor.Decrypt(responseBytes);
+
+            _logger.LogDebug("Gateway response received");
+
+            var jsonDoc = JsonDocument.Parse(responseJson);
+            var root = jsonDoc.RootElement;
+
+            // Check if the response status is success
+            if (!root.TryGetProperty("status", out var statusProp) || statusProp.GetString() != "success")
+            {
+                _logger.LogError("Gateway rejected command: {Command}", command);
+                throw new SalusCommandException($"Gateway rejected '{command}' command");
+            }
+
+            return root;
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "Timeout while connecting to gateway");
+            throw new SalusConnectionException("Timeout while connecting to gateway. Please check if the gateway is accessible.", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Connection error while communicating with gateway");
+            throw new SalusConnectionException("Cannot connect to gateway. Please check the host/IP address.", ex);
+        }
+        catch (SalusException)
+        {
+            throw; // Re-throw our custom exceptions
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while communicating with gateway");
+            
+            // Try to determine if it's an authentication error
+            if (ex.Message.Contains("decrypt", StringComparison.OrdinalIgnoreCase) || 
+                ex.Message.Contains("padding", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new SalusAuthenticationException("Authentication failed. Please check if the EUID is correct.", ex);
+            }
+            
+            throw new SalusCommandException("Unexpected error occurred while communicating with gateway", ex);
+        }
     }
 }

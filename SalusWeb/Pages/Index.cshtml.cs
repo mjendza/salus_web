@@ -54,10 +54,20 @@ public class IndexModel : PageModel
             
             _logger.LogInformation("Successfully loaded {DeviceCount} devices", Devices.Count);
         }
+        catch (SalusWeb.Exceptions.SalusAuthenticationException ex)
+        {
+            _logger.LogError(ex, "Authentication error loading devices from gateway");
+            ErrorMessage = "Authentication failed. Please verify your EUID is correct (16 hexadecimal characters).";
+        }
+        catch (SalusWeb.Exceptions.SalusConnectionException ex)
+        {
+            _logger.LogError(ex, "Connection error loading devices from gateway");
+            ErrorMessage = $"Cannot connect to gateway at {Host}. Please check:\n• Gateway is powered on\n• Host/IP address is correct\n• Gateway is on the same network\n• 'Local WiFi Mode' is enabled in gateway settings";
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error loading devices from gateway");
-            ErrorMessage = "Unable to load devices from gateway. Displaying demo data.";
+            ErrorMessage = $"Error communicating with gateway: {ex.Message}";
         }
 
         return Page();
